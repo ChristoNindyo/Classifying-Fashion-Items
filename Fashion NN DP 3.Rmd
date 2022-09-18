@@ -1,0 +1,299 @@
+---
+title: "Neural Network / Deep Learning for Classifying Image"
+author: "Christopher Nindyo"
+date: "`r Sys.Date()`"
+output: 
+  rmdformats::material:
+    self_contained: true
+    thumbnails: false
+    lightbox: true
+    gallery: true
+    highlight: tango
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+# chunk options
+knitr::opts_chunk$set(
+  message = FALSE,
+  warning = FALSE,
+  fig.align = "center",
+  comment = "#>"
+)
+```
+
+# Objective
+We are going to make a model with **Neural Network / Deep Learning**. For this case, we use `keras`. Why Keras ? Because Keras is one of the easiest and the most simple for **Neural Network / Deep Learning**. In this article, we are going classifying Fashion Items.
+
+# The Fashion Items
+
+These are Fashion Items which we are going to classify :
+
+* 0 T-shirt/top
+* 1 Trouser
+* 2 Pullover
+* 3 Dress
+* 4 Coat
+* 5 Sandal
+* 6 Shirt
+* 7 Sneaker
+* 8 Bag
+* 9 Ankle boot
+
+# Library 
+
+The library that we use, you could see below.
+
+```{r}
+library(keras)      # Create deep models
+library(tensorflow) # Platform for modeling
+library(dplyr)      # Data Manipulation
+library(caret)      # Classification and Regression Training
+```
+
+# Read Data
+
+Import data and read data from fashionmnist Dataset. I get the data from kaggle, you could see [here](https://www.kaggle.com/datasets/zalando-research/fashionmnist)
+
+```{r}
+fashion_train <- read.csv("data_input/fashionmnist/fashionmnist/train.csv")
+fashion_test <- read.csv("data_input/fashionmnist/fashionmnist/test.csv")
+```
+
+# Visualize Data Train
+
+Before we make the model, Let's see the data train that we have.
+
+```{r}
+# Visualize function
+vizTrain <- function(input){
+  
+  dimmax <- sqrt(ncol(input[,-1]))
+  
+  dimn <- ceiling(sqrt(nrow(input)))
+  par(mfrow=c(dimn, dimn), mar=c(.1, .1, .1, .1))
+  
+  for (i in 1:nrow(input)){
+      m1 <- as.matrix(input[i,2:785])
+      dim(m1) <- c(28,28)
+      
+      m1 <- apply(apply(m1, 1, rev), 1, t)
+      
+      image(1:28, 1:28, 
+            m1, col=grey.colors(255), 
+            # remove axis text
+            xaxt = 'n', yaxt = 'n')
+      text(2, 20, col="white", cex=1.2, input[i, 1])
+  }
+  
+}
+```
+
+See the the top 42 images from `fashion_train`
+
+```{r}
+vizTrain(head(fashion_train, 42))
+```
+
+# Exploratory Data
+
+Check the top 6 data from `fashion_train`
+
+```{r}
+fashion_train %>% head()
+```
+
+Dimension of `fashion_train`
+
+```{r}
+fashion_train %>% dim()
+```
+
+We have 60.000 observations and 785 predictor or independent variable.
+</br>
+
+Proportion of 9 items in `fashion_train$label`
+
+```{r}
+prop.table(table(fashion_train$label))
+```
+
+The proportion of 9 items in `fashion_train$label`is already balance
+
+# Cross Validation
+
+We are going to split `fashion_train` to Train Model and Validate Model. 70% for Train Model and 30% for Validate Model.
+
+```{r}
+#Spliting the data 
+library(rsample)
+
+set.seed(100)
+index <- initial_split(fashion_train, prop = 0.7, strata = "label")
+
+train_data  <- training(index)
+validation_data <- testing(index)
+```
+
+# Further Data Pre-Processing
+
+## Scaling
+
+Select every column except label, because label going to be our target variable. Then change the type to matrix. At last, divided by 255 (the number of pixels in one image)
+
+```{r}
+library(dplyr)
+
+train_x <- train_data %>% select(-label) %>% as.matrix() / 255
+
+valid_x <- validation_data %>% select(-label) %>% as.matrix() / 255
+```
+
+## Matrix to Array
+
+Change the data to array so Keras can process
+
+```{r}
+train_x <- array_reshape(train_x, dim=dim(train_x))
+valid_x <- array_reshape(valid_x, dim=dim(valid_x))
+```
+
+## One Hot Encoding 
+
+The target variable is a category data so we must do `One Hot Encoding`
+
+```{r}
+train_y <- train_data %>% select(label) %>% as.matrix()
+train_y <- to_categorical(train_y, num_classes=10)
+
+valid_y <- validation_data %>% select(label) %>% as.matrix()
+valid_y <- to_categorical(valid_y, num_classes=10)
+```
+
+Check the top 6 of `train_y`
+```{r}
+train_y %>% head()
+```
+
+# Modeling
+
+```{r}
+# The number of Neuron in Input Layer
+input_dim <- ncol(train_x)
+input_dim
+
+# The number of Neuron in Output Layer
+num_class <- n_distinct(fashion_train$label)
+num_class
+```
+
+We have 784 neurons in input layer and 10 neurons in output layer.
+
+
+## Architecture
+
+Make the model architecture. <br>
+We are going to use 300 neurons in first hidden layer with activation function : Rectified Linear Unit (ReLU). This function transforming the summed weighted input from the node into the activation of the node or output for that input. Then 150 neurons in second hidden layer with activation function : Rectified Linear Unit (ReLU). In output layer, we use Softmax activation function. This used as the activation function in the output layer of neural network models that predict a multinomial probability.
+
+```{r}
+library(tensorflow)
+set_random_seed(100)
+
+model1 <- keras_model_sequential(name = "model_keras") %>% 
+  layer_dense(units = 300, activation = "relu", input_shape = input_dim, name = "hidden_1") %>% 
+  layer_dense(units = 150, activation = "relu", name = "hidden_2") %>% 
+  layer_dense(units = num_class, activation = "softmax", name = "output")
+
+model1
+```
+
+## Compile Model
+
+
+Determine the error function, optimizer, and metrics that we going to use when we train the data. </br>
+</br>
+**Error/Loss Function** : 
+Classifying with more than 2 classes : `loss_categorical_crossentropy()`
+
+**Optimizer**
+Update weight when learning : we use 'optimizer_adam'
+Adam optimization is a stochastic gradient descent method that is based on adaptive estimation of first-order and second-order moments.
+
+**Learning_rate**
+Learning from Optimizer when do back propagation
+
+```{r}
+model1 %>% compile(loss = loss_categorical_crossentropy(),
+                   optimizer = optimizer_adam(learning_rate = 0.01),
+                   metrics = 'accuracy')
+```
+
+## Train Model
+
+Train model with the data train and data validation
+```{r}
+history <- model1 %>% 
+  fit(x=train_x, y=train_y, 
+      validation_data=list(valid_x, valid_y), 
+      epoch=15,
+      batch_size=420) # berapa besar bagian yang diupdate error 
+
+plot(history)
+```
+
+> The graph shows increasing accuracy and decreasing loss at most potential in around epoch 1 to 4. Then get increasing but slowly until epoch 15.
+
+# Model Prediction & Evaluation Data Validation
+
+## Predict Data Validation
+
+```{r}
+pred <- predict(model1, valid_x) %>% k_argmax() %>% as.array() %>% as.factor()
+```
+
+## Evaluation Data Validation
+
+```{r}
+confusionMatrix(data=pred, reference=as.factor(validation_data$label))
+```
+
+> The accuracy from data validation : 0.8788 . If we check from data training, the accuracy: 0.9035. This means the model is fit. Not overfit neither underfit.
+
+# Model Prediction & Evaluation Data Test
+
+Let's check the model with Data Test
+
+## Pre-Processing
+```{r}
+preprocess_x <- function(x){
+    train_x <- x %>% select(-label) %>% as.matrix() / 255
+    train_x <- array_reshape(train_x, dim=dim(train_x))
+    return(train_x)
+}
+
+preprocess_y <- function(x){
+    train_y <- x %>% select(label) %>% as.matrix()
+    train_y <- to_categorical(train_y, num_classes=10)
+    return(train_y)
+}
+
+test_x <- preprocess_x(fashion_test)
+test_y <- preprocess_y(fashion_test)
+```
+
+
+## Predict Data Test
+
+```{r}
+pred1 <- predict(model1, test_x) %>% k_argmax() %>% as.array() %>% as.factor()
+```
+
+## Evaluation Data Test
+
+```{r}
+confusionMatrix(data=pred1, reference=as.factor(fashion_test$label))
+```
+
+> The accuracy from data test : 0.8806  . If we check from data training, the accuracy: 0.9035. This means the model is fit. Not overfit neither underfit.
